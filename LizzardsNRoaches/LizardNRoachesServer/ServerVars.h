@@ -15,8 +15,7 @@
 #include "LinkedListFun.h"
 #include <time.h>
 
-typedef struct liz_info_t
-{
+typedef struct liz_info_t{
     int secret;
     int pos_x, pos_y;
     int score;
