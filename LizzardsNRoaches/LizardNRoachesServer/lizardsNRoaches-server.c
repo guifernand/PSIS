@@ -9,6 +9,24 @@ int convertChar(char c){
     return c -'0';
 }
 
+int makeSecret(int clientId,int pos){
+    return clientId<<10 + pos; 
+}
+
+void decodeSecret(int secret,int decoded[2]){
+    decoded[0]= secret & 0x3FF;
+    decoded[1]= secret>>10;
+}
+
+int getClientIdFromSecret(int secret){
+    return secret>>10;
+}
+
+int getRoachPosFromSecret(int secret){
+    return secret & 0x3FF;
+}
+
+
 void initializeLizards(liz_info_t* lizards){
     for(int i=0;i<MAX_NUM_PLAYERS;i++){
         lizards[i].score=-1;
@@ -34,62 +52,65 @@ void initializeRoaches(roach_info_t* roaches){
     }
 }
 
-int makeSecret(int pos){
-    return rand()<<10 + pos; 
+int RoachIdx(int x,int y,liz_info_t *lizards,roach_info_t *roaches){
+    for (int i = 0; i < MAX_NUM_ROACHES; i++){
+         if (roaches[i].pos_x==x && roaches[i].pos_y==y){
+            return i;
+        }
+    }
+    return -1; 
 }
 
-void decodeSecret(int secret,int decoded[2]){
-    decoded[0]= secret & 0x3FF;
-    decoded[1]= secret>>10;
-}
-
-
-int isEmpty(int x,int y,liz_info_t *lizards,roach_info_t *roaches,int *score,List* deadRoaches){
+int LizIdx(int x,int y,liz_info_t *lizards,roach_info_t *roaches){
     //check for lizards
     for (int i = 0; i < MAX_NUM_PLAYERS; i++){
         if (lizards[i].pos_x==x && lizards[i].pos_y==y){
-            *score = lizards[i].score;
-            return 1;
+            return i;
         }
     }
-    for (int i = 0; i < MAX_NUM_ROACHES; i++){
-         if (roaches[i].pos_x==x && roaches[i].pos_y==y){
-            *score += roaches[i].id;
-            addToEnd(deadRoaches,time(NULL),i);
-        }
-    }
-    return 0; 
+    return -1; 
 }
 
-
-int find_empty_pos(liz_info_t *lizards,roach_info_t *roaches,int* finalx,int*finaly,List* deadRoaches){
-    int not_found = 1;
-    int score=0;
-    while (not_found==1){
-        *finalx=random() % (WINDOW_SIZE+1);
-        *finaly=random()% (WINDOW_SIZE+1);
-        not_found=isEmpty(*finalx,*finaly,lizards,roaches,&score,deadRoaches);
+void find_empty_pos(liz_info_t *lizards,roach_info_t *roaches,int* finalx,int*finaly){
+    int RoachPos = -1;
+    int LizPos = -1;
+    while (LizPos==-1||RoachPos==-1){
+        *finalx=rand() % (WINDOW_SIZE+1);
+        *finaly=rand() % (WINDOW_SIZE+1);
+        RoachPos=LizIdx(*finalx,*finaly,lizards,roaches);
+        if(RoachPos==-1)return;
+        LizPos=RoachIdx(*finalx,*finaly,lizards,roaches);
     }
-    return score;
 }
 
-int create_lizard (liz_info_t *lizards,roach_info_t *roaches,List* deadRoaches){
+int create_lizard(liz_info_t *lizards,roach_info_t *roaches,List* deadRoaches){
     for (int i = 0; i < MAX_NUM_PLAYERS; i++){
         if(lizards[i].secret==-1){
-            lizards[i].score = find_empty_pos(lizards,roaches,&lizards[i].pos_x,&lizards[i].pos_y,deadRoaches);
-            lizards[i].secret= random();
+            find_empty_pos(lizards,roaches,&(lizards[i].pos_x),&(lizards[i].pos_y));
+            lizards[i].score = 0;
+            lizards[i].secret= rand();
             return i;
         }
     }
     return -1;
 }
 
-char create_roach (liz_info_t *lizards,roach_info_t *roaches,char ch,List* deadRoaches){
+char create_roach(liz_info_t *lizards,roach_info_t *roaches,char ch,List* deadRoaches,int clientId){
+    int client_roaches = 0;
+    
     for (int i = 0; i < MAX_NUM_ROACHES; i++){
+        if (getClientIdFromSecret(roaches[i].secret) == clientId){
+            client_roaches++;
+        }
+        
+        if(client_roaches == MAX_NUM_ROACHES){
+            return -1;
+        }
+            
         if(roaches[i].secret==-1){
-            find_empty_pos(lizards,roaches,roaches[i].pos_x,roaches[i].pos_y,deadRoaches);
+            find_empty_pos(lizards,roaches,roaches[i].pos_x,roaches[i].pos_y);
             roaches[i].id = ch - '0';
-            roaches[i].secret=random();
+            roaches[i].secret=makeSecret(clientId,i);
             return i;
         }
     }
@@ -102,6 +123,9 @@ void setReplyMessage(reply_message_t* replyMessage,int score,char ch, int secret
     replyMessage->secret=secret;
 }
 
+void treatRoachClientConect(message_t incomingMessage,reply_message_t* replyMessage){
+    replyMessage->secret = (rand()<<10)>>10;
+}
 
 void treatConnectMessage(liz_info_t* lizards,roach_info_t* roaches,message_t incomingMessage, List* deadRoaches,reply_message_t* replyMessage){
     int newPos=-1;
@@ -115,15 +139,14 @@ void treatConnectMessage(liz_info_t* lizards,roach_info_t* roaches,message_t inc
         }
     }else{
         //roach connect message
-        newPos= create_roach(lizards,roaches,incomingMessage.ch,deadRoaches);
-         if (newPos==-1){
+        newPos= create_roach(lizards,roaches,incomingMessage.ch,deadRoaches,incomingMessage.secret);
+        if (newPos==-1){
             setReplyMessage(replyMessage,-1,-1,-1);
         }else{
             setReplyMessage(replyMessage,roaches[newPos].id,'0',roaches[newPos].secret);
         }
     }
 }
-
 
 void new_position(int* x, int *y, direction_t direction){
     switch (direction){
@@ -175,41 +198,72 @@ bool isRoachDead(int RoachPos,List* deadRoaches){
 }
 
 int SecretMatchesRoach(int secret,roach_info_t* roaches){
-    for(int i=0;i<MAX_NUM_ROACHES;i++){
-        if(roaches[i].secret==secret)return i;
-    }
+    int clientID=getClientIdFromSecret(secret);
+    int RoachPos=getRoachPosFromSecret(secret);
+    if(roaches[RoachPos].secret==clientID)return RoachPos;
     return -1;
 }
 
-int lizardMovement(liz_info_t* lizards, message_t m, WINDOW* my_win){
+void lizzardsBumping(int lizzard1, int lizzard2,liz_info_t* lizards){
+    int newScore = (lizards[lizzard1].score+ lizards[lizzard2].score)/2;
+    lizards[lizzard1].score=newScore;
+    lizards[lizzard2].score=newScore;
+}
+
+void EatRoaches(int x,int y,roach_info_t* roaches,liz_info_t* lizzardEating,List* deadRoaches){
+
+    for(int i=0;i<MAX_NUM_ROACHES;i++){
+        if(roaches[i].pos_x==x&&roaches[i].pos_y==y){
+            lizzardEating->score+= roaches[i].id;
+            addToEnd(deadRoaches,time(NULL),i);
+            //Make Roach Disappear in Visual thingie magingie
+        }
+    }
+}
+
+//SE CALHAR METER UMA LISTA DE ALTERAÇOES?? PARA O SUBSCRIBE? OU IR MANDANDO?
+
+//-1 nao mexeu, 1 mexeu, 2 chocou com lizzard, 3 chocou com roaches
+int lizardMovement(liz_info_t* lizards, message_t m, WINDOW* my_win,roach_info_t* roaches,List* deadRoaches){
     int pos_x = -1;
     int pos_y = -1;
-    
+    int Idx= 0;
     int ch_pos = SecretMatchesLiz(m.secret,m.ch,lizards);
     if(ch_pos != -1){
         pos_x = lizards[ch_pos].pos_x;
         pos_y = lizards[ch_pos].pos_y;
-        
-        /*deletes old place */
-        wmove(my_win, pos_x, pos_y);
-        waddch(my_win,' ');
 
         /* calculates new mark position */
         new_position(&pos_x, &pos_y,  m.direction);
+        
+        //Lizzard
+        Idx=LizIdx(pos_x,pos_y,lizards,roaches);
+        if(Idx!=-1){
+            lizzardsBumping(ch_pos,Idx,lizards);
+            return -1;
+        }else{
+            EatRoaches(pos_x,pos_y,Idx,&lizards[ch_pos],deadRoaches);
+        }
+        
         lizards[ch_pos].pos_x = pos_x;
         lizards[ch_pos].pos_y = pos_y;
+
+        /*deletes old place */
+        wmove(my_win, pos_x, pos_y);
+        waddch(my_win,' ');
 
         /* draw mark on new position */
         wmove(my_win, pos_x, pos_y);
         waddch(my_win,m.ch| A_BOLD);
         wrefresh(my_win);	
 
-        return 1;	
+        //Send to subscribers
+        return 1; 
     }     
     return -1;  
 }
 
-int roachMovement(roach_info_t* roaches, List* deadRoaches, message_t m, WINDOW* my_win){
+int roachMovement(roach_info_t* roaches, List* deadRoaches, message_t m, liz_info_t *lizards, WINDOW* my_win){
     int pos_x = -1;
     int pos_y = -1;
     
@@ -219,42 +273,39 @@ int roachMovement(roach_info_t* roaches, List* deadRoaches, message_t m, WINDOW*
             pos_x = roaches[ch_pos].pos_x;
             pos_y = roaches[ch_pos].pos_y;
 
-            /*deletes old place */
-            wmove(my_win, pos_x, pos_y);
-            waddch(my_win,' ');
-
-            /* claculates new mark position */
             new_position(&pos_x, &pos_y, m.direction);
-            roaches[ch_pos].pos_x = pos_x;
-            roaches[ch_pos].pos_y = pos_y;
 
-            /* draw mark on new position */
-            wmove(my_win, pos_x, pos_y);
-            waddch(my_win,m.ch| A_BOLD);
-            wrefresh(my_win);
+            if(RoachIdx(pos_x,pos_y,lizards,roaches)>=0){
+                /*deletes old place */
+                wmove(my_win, pos_x, pos_y);
+                waddch(my_win,' ');
 
+                /* claculates new mark position */
+                roaches[ch_pos].pos_x = pos_x;
+                roaches[ch_pos].pos_y = pos_y;
+
+                /* draw mark on new position */
+                wmove(my_win, pos_x, pos_y);
+                waddch(my_win,m.ch| A_BOLD);
+                wrefresh(my_win);
+            }
             return 1;
         }	
     }     
     return -1;
 }
 
-
 int treatMoveMessage(liz_info_t* lizards,roach_info_t* roaches,message_t incomingMessage,List* deadRoaches,reply_message_t* replyMessage,WINDOW* my_win){
     int ret = -1;
+    
     if (incomingMessage.msg_type==1){
         ret = lizardMovement(lizards,incomingMessage,my_win);
     }else{
         ret = roachMovement(roaches,deadRoaches,incomingMessage,my_win);
     }   
-
-    if (ret==-1){
-        setReplyMessage(replyMessage,-1,-1,-1);
-    }else{
-        setReplyMessage(replyMessage,1,1,1);
-    }
+    
+    setReplyMessage(replyMessage,ret,ret,ret);
 }
-
 
 int treatDisconnectMessage(liz_info_t* lizards,roach_info_t* roaches,message_t incomingMessage,reply_message_t* replyMessage){
     int pos=-1;
@@ -288,9 +339,7 @@ void sendReply(void *responder,reply_message_t *replyMessage){
     }
 }
 
-
-int main()
-{	
+int main(){	
     srand(time(NULL));
 
     List* deadRoaches=NULL;
@@ -329,23 +378,23 @@ int main()
            printf("No message Received");
            continue;
         }
-
         switch (abs(incomingMessage.msg_type)){
-        case 1:
-            treatConnectMessage(lizards,roaches, incomingMessage,deadRoaches,&replyMessage);
-            break;
-        case 2:
-            treatMoveMessage(lizards,roaches, incomingMessage,deadRoaches,&replyMessage, my_win);
-            break;
-        case 3:
-            treatDisconnectMessage(lizards,roaches, incomingMessage,&replyMessage);
-            break;
-        default:
-            continue;
+            case 0:
+                treatRoachClientConect(incomingMessage,&replyMessage);
+                break;
+            case 1:
+                treatConnectMessage(lizards,roaches,incomingMessage,deadRoaches,&replyMessage);
+                break;
+            case 2:
+                treatMoveMessage(lizards,roaches,incomingMessage,deadRoaches,&replyMessage,my_win);
+                break;
+            case 3:
+                treatDisconnectMessage(lizards,roaches,incomingMessage,&replyMessage);
+                break;
+            default:
+                continue;
         }
         sendReply(responder,&replyMessage);
-
-
     }
 
 	return 0;
