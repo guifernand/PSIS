@@ -263,7 +263,7 @@ int lizardMovement(liz_info_t* lizards, message_t m, WINDOW* my_win,roach_info_t
     return -1;  
 }
 
-int roachMovement(roach_info_t* roaches, List* deadRoaches, message_t m, liz_info_t *lizards, WINDOW* my_win){
+int roachMovement(roach_info_t* roaches, List* deadRoaches, message_t m, liz_info_t *, WINDOW* my_win){
     int pos_x = -1;
     int pos_y = -1;
     
@@ -299,9 +299,9 @@ int treatMoveMessage(liz_info_t* lizards,roach_info_t* roaches,message_t incomin
     int ret = -1;
     
     if (incomingMessage.msg_type==1){
-        ret = lizardMovement(lizards,incomingMessage,my_win);
+        ret = lizardMovement(lizards,incomingMessage,my_win,roaches,deadRoaches);
     }else{
-        ret = roachMovement(roaches,deadRoaches,incomingMessage,my_win);
+        ret = roachMovement(roaches,deadRoaches,incomingMessage,lizards,my_win);
     }   
     
     setReplyMessage(replyMessage,ret,ret,ret);
