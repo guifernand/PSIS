@@ -31,8 +31,16 @@ void initializeRoaches(roach_info_t* roaches){
         roaches[i].pos_y=-1;
         roaches[i].secret=-1;
         roaches[i].id=-1;
-
     }
+}
+
+int makeSecret(int pos){
+    return rand()<<10 + pos; 
+}
+
+void decodeSecret(int secret,int decoded[2]){
+    decoded[0]= secret & 0x3FF;
+    decoded[1]= secret>>10;
 }
 
 
@@ -155,12 +163,25 @@ int SecretMatchesLiz(int secret, char ch,liz_info_t* lizards){
     return -1;
 }
 
-int SecretMatchesRoach(int secret, char ch,roach_info_t* roaches){
-
+bool isRoachDead(int RoachPos,List* deadRoaches){
+    Node* aux = deadRoaches->head;
+    while (aux!=NULL){
+        if (RoachPos == aux->id){
+            return true;  
+        }
+        aux=aux->next;
+    }
+    return false;
 }
 
+int SecretMatchesRoach(int secret,roach_info_t* roaches){
+    for(int i=0;i<MAX_NUM_ROACHES;i++){
+        if(roaches[i].secret==secret)return i;
+    }
+    return -1;
+}
 
-void lizardMovement(liz_info_t* lizards, message_t m, WINDOW* my_win){
+int lizardMovement(liz_info_t* lizards, message_t m, WINDOW* my_win){
     int pos_x = -1;
     int pos_y = -1;
     
@@ -183,43 +204,55 @@ void lizardMovement(liz_info_t* lizards, message_t m, WINDOW* my_win){
         waddch(my_win,m.ch| A_BOLD);
         wrefresh(my_win);	
 
-    }   
+        return 1;	
+    }     
+    return -1;  
 }
 
-void roachMovement(roach_info_t* roaches, List* deadRoaches, message_t m, WINDOW* my_win){
+int roachMovement(roach_info_t* roaches, List* deadRoaches, message_t m, WINDOW* my_win){
     int pos_x = -1;
     int pos_y = -1;
     
-    int ch_pos = SecretMatchesRoach(m.secret,m.ch,roaches);
-    if(ch_pos != -1 && isRoachDead(ch_pos, deadRoaches)){
-        pos_x = roaches[ch_pos].pos_x;
-        pos_y = roaches[ch_pos].pos_y;
+    int ch_pos = SecretMatchesRoach(m.secret,roaches);
+    if(ch_pos != -1){
+        if(!isRoachDead(ch_pos, deadRoaches)){
+            pos_x = roaches[ch_pos].pos_x;
+            pos_y = roaches[ch_pos].pos_y;
 
-        /*deletes old place */
-        wmove(my_win, pos_x, pos_y);
-        waddch(my_win,' ');
+            /*deletes old place */
+            wmove(my_win, pos_x, pos_y);
+            waddch(my_win,' ');
 
-        /* claculates new mark position */
-        new_position(&pos_x, &pos_y, m.direction);
-        roaches[ch_pos].pos_x = pos_x;
-        roaches[ch_pos].pos_y = pos_y;
+            /* claculates new mark position */
+            new_position(&pos_x, &pos_y, m.direction);
+            roaches[ch_pos].pos_x = pos_x;
+            roaches[ch_pos].pos_y = pos_y;
 
-        /* draw mark on new position */
-        wmove(my_win, pos_x, pos_y);
-        waddch(my_win,m.ch| A_BOLD);
-        wrefresh(my_win);	
+            /* draw mark on new position */
+            wmove(my_win, pos_x, pos_y);
+            waddch(my_win,m.ch| A_BOLD);
+            wrefresh(my_win);
+
+            return 1;
+        }	
     }     
+    return -1;
 }
 
 
 int treatMoveMessage(liz_info_t* lizards,roach_info_t* roaches,message_t incomingMessage,List* deadRoaches,reply_message_t* replyMessage,WINDOW* my_win){
-
+    int ret = -1;
     if (incomingMessage.msg_type==1){
-        lizardMovement(lizards,incomingMessage,my_win);
+        ret = lizardMovement(lizards,incomingMessage,my_win);
     }else{
-        roachMovement(roaches,deadRoaches,incomingMessage,my_win);
+        ret = roachMovement(roaches,deadRoaches,incomingMessage,my_win);
     }   
 
+    if (ret==-1){
+        setReplyMessage(replyMessage,-1,-1,-1);
+    }else{
+        setReplyMessage(replyMessage,1,1,1);
+    }
 }
 
 
@@ -229,12 +262,20 @@ int treatDisconnectMessage(liz_info_t* lizards,roach_info_t* roaches,message_t i
         pos=SecretMatchesLiz(replyMessage->secret,replyMessage->ch,lizards);
         if(pos==-1){
             //Unauthorized
+            setReplyMessage(replyMessage,-1,-1,-1);
         }else{
             resetLizard(lizards,pos);
+            setReplyMessage(replyMessage,1,1,1);
         }
-
     }else{
-        //é Preciso?
+        pos=SecretMatchesrRoach(replyMessage->secret,replyMessage->ch,roaches);
+        if(pos==-1){
+            //Unauthorized
+            setReplyMessage(replyMessage,-1,-1,-1);
+        }else{
+            resetRoach(roaches,pos);
+            setReplyMessage(replyMessage,1,1,1);
+        }
     }    
 }
 

@@ -2,7 +2,7 @@
 typedef enum direction_t {UP, DOWN, LEFT, RIGHT} direction_t;
 
 typedef struct message_t{   
-    int msg_type; /* 1:lizard connect   -1:roach connect  2:Lizardmove  -2: Roach move  3:Disconect lizard -3:Disconect roach */
+    int msg_type; /*0:newclient  1:lizard connect   -1:roach connect  2:Lizardmove  -2: Roach move  3:Disconect lizard -3:Disconect roach */
     char ch; 
     int secret;
     direction_t direction ;
